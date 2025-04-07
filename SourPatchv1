@@ -1,3 +1,54 @@
+-- Settings
+local HoldClick = true
+local Hotkey = 't' -- Leave blank for always on
+local HotkeyToggle = true -- True if you want it to toggle on and off with a click
+
+local Players = game:GetService('Players')
+local RunService = game:GetService('RunService')
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+local Toggle = (Hotkey ~= '')
+local CurrentlyPressed = false
+
+Mouse.KeyDown:Connect(function(key)
+	if HotkeyToggle == true and key == Hotkey then
+		Toggle = not Toggle
+	elseif 
+		key == Hotkey then
+		Toggle = true
+	end
+end)
+
+Mouse.KeyUp:Connect(function(key)
+	if HotkeyToggle ~= true and key == Hotkey then
+		Toggle = false
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
+	if Toggle then
+		if Mouse.Target then
+			if Mouse.Target.Parent:FindFirstChild('Humanoid') then
+				if HoldClick then
+					if not CurrentlyPressed then
+						CurrentlyPressed = true
+						mouse1press()
+					end
+				else
+					mouse1click()
+				end
+			else
+				if HoldClick then
+					CurrentlyPressed = false
+					mouse1release()
+				end
+			end
+		end
+	end
+end)
+
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
@@ -28,6 +79,7 @@ local Window = Rayfield:CreateWindow({
 })
 
 local MainTab = Window:CreateTab("Main", 4483362458)
+local UITab = Window:CreateTab("Visuals", 4483362458)
 local ThemesTab = Window:CreateTab("Themes", 4483362458)
 
 -- Silent Aim Section
@@ -38,11 +90,21 @@ local silentAimSettings = {
     FOVColor = Color3.new(1, 0, 0),
     FOVTransparency = 0.5,
     FOVFilled = false,
-    FOVThickness = 1
+    FOVThickness = 1,
+    FOVRainbowMode = false,
+    FOVRainbowSpeed = 1
 }
 
 local silentAimConnections = {}
 local fovCircle = nil
+
+-- Triggerbot Section
+local triggerbotSettings = {
+    Enabled = false,
+    HoldClick = true,
+    Hotkey = "t",
+    HotkeyToggle = true
+}
 
 -- ESP Section
 local espSettings = {
@@ -82,7 +144,7 @@ local function createFOV()
     
     fovCircle = Drawing.new("Circle")
     fovCircle.Visible = silentAimSettings.Enabled and silentAimSettings.ShowFOV
-    fovCircle.Color = silentAimSettings.FOVColor
+    fovCircle.Color = silentAimSettings.FOVRainbowMode and getRainbowColor(rainbowHue) or silentAimSettings.FOVColor
     fovCircle.Transparency = silentAimSettings.FOVTransparency
     fovCircle.Filled = silentAimSettings.FOVFilled
     fovCircle.Thickness = silentAimSettings.FOVThickness
@@ -94,7 +156,7 @@ local function updateFOV()
     if not fovCircle then return end
     
     fovCircle.Visible = silentAimSettings.Enabled and silentAimSettings.ShowFOV
-    fovCircle.Color = silentAimSettings.FOVColor
+    fovCircle.Color = silentAimSettings.FOVRainbowMode and getRainbowColor(rainbowHue) or silentAimSettings.FOVColor
     fovCircle.Transparency = silentAimSettings.FOVTransparency
     fovCircle.Filled = silentAimSettings.FOVFilled
     fovCircle.Thickness = silentAimSettings.FOVThickness
@@ -258,92 +320,30 @@ end
 
 -- Rainbow effect update
 game:GetService("RunService").Heartbeat:Connect(function(delta)
-    if espSettings.RainbowMode then
-        rainbowHue = (rainbowHue + delta * 0.25 * espSettings.RainbowSpeed) % 1
-        for _, data in pairs(espObjects) do
-            if data.box then
-                data.box.Color = getRainbowColor(rainbowHue)
+    if espSettings.RainbowMode or silentAimSettings.FOVRainbowMode then
+        rainbowHue = (rainbowHue + delta * 0.25 * (espSettings.RainbowMode and espSettings.RainbowSpeed or silentAimSettings.FOVRainbowSpeed)) % 1
+        
+        if espSettings.RainbowMode then
+            for _, data in pairs(espObjects) do
+                if data.box then
+                    data.box.Color = getRainbowColor(rainbowHue)
+                end
+                if data.dot then
+                    data.dot.Color = getRainbowColor(rainbowHue)
+                end
             end
-            if data.dot then
-                data.dot.Color = getRainbowColor(rainbowHue)
-            end
+        end
+        
+        if silentAimSettings.FOVRainbowMode and fovCircle then
+            fovCircle.Color = getRainbowColor(rainbowHue)
         end
     end
 end)
 
--- FOV Controls
-MainTab:CreateToggle({
-    Name = "Show FOV Circle",
-    CurrentValue = silentAimSettings.ShowFOV,
-    Flag = "SilentAimShowFOV",
-    Callback = function(Value)
-        silentAimSettings.ShowFOV = Value
-        updateFOV()
-    end,
-})
-
-MainTab:CreateSlider({
-    Name = "FOV Size",
-    Range = {20, 200},
-    Increment = 5,
-    Suffix = "px",
-    CurrentValue = silentAimSettings.FOVSize,
-    Flag = "FOVSize",
-    Callback = function(Value)
-        silentAimSettings.FOVSize = Value
-        updateFOV()
-    end,
-})
-
-MainTab:CreateColorPicker({
-    Name = "FOV Color",
-    Color = silentAimSettings.FOVColor,
-    Flag = "FOVColor",
-    Callback = function(Value)
-        silentAimSettings.FOVColor = Value
-        updateFOV()
-    end
-})
-
-MainTab:CreateSlider({
-    Name = "FOV Transparency",
-    Range = {0, 1},
-    Increment = 0.05,
-    Suffix = "",
-    CurrentValue = silentAimSettings.FOVTransparency,
-    Flag = "FOVTransparency",
-    Callback = function(Value)
-        silentAimSettings.FOVTransparency = Value
-        updateFOV()
-    end,
-})
-
-MainTab:CreateToggle({
-    Name = "FOV Filled",
-    CurrentValue = silentAimSettings.FOVFilled,
-    Flag = "FOVFilled",
-    Callback = function(Value)
-        silentAimSettings.FOVFilled = Value
-        updateFOV()
-    end,
-})
-
-MainTab:CreateSlider({
-    Name = "FOV Thickness",
-    Range = {1, 5},
-    Increment = 1,
-    Suffix = "px",
-    CurrentValue = silentAimSettings.FOVThickness,
-    Flag = "FOVThickness",
-    Callback = function(Value)
-        silentAimSettings.FOVThickness = Value
-        updateFOV()
-    end,
-})
-
 -- Silent Aim Toggle
+local silentAimUI = MainTab:CreateSection("Silent Aim Settings")
 local Toggle = MainTab:CreateToggle({
-    Name = "Silent Aim Arsenal",
+    Name = "Silent Aim",
     CurrentValue = silentAimSettings.Enabled,
     Flag = "Toggle1",
     Callback = function(Value)
@@ -430,8 +430,146 @@ local Toggle = MainTab:CreateToggle({
     end,
 })
 
--- ESP Controls
+-- FOV Controls
 MainTab:CreateToggle({
+    Name = "Show FOV Circle",
+    CurrentValue = silentAimSettings.ShowFOV,
+    Flag = "SilentAimShowFOV",
+    Callback = function(Value)
+        silentAimSettings.ShowFOV = Value
+        updateFOV()
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "FOV Size",
+    Range = {20, 200},
+    Increment = 5,
+    Suffix = "px",
+    CurrentValue = silentAimSettings.FOVSize,
+    Flag = "FOVSize",
+    Callback = function(Value)
+        silentAimSettings.FOVSize = Value
+        updateFOV()
+    end,
+})
+
+MainTab:CreateColorPicker({
+    Name = "FOV Color",
+    Color = silentAimSettings.FOVColor,
+    Flag = "FOVColor",
+    Callback = function(Value)
+        silentAimSettings.FOVColor = Value
+        if not silentAimSettings.FOVRainbowMode then
+            updateFOV()
+        end
+    end
+})
+
+MainTab:CreateSlider({
+    Name = "FOV Transparency",
+    Range = {0, 1},
+    Increment = 0.05,
+    Suffix = "",
+    CurrentValue = silentAimSettings.FOVTransparency,
+    Flag = "FOVTransparency",
+    Callback = function(Value)
+        silentAimSettings.FOVTransparency = Value
+        updateFOV()
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "FOV Filled",
+    CurrentValue = silentAimSettings.FOVFilled,
+    Flag = "FOVFilled",
+    Callback = function(Value)
+        silentAimSettings.FOVFilled = Value
+        updateFOV()
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "FOV Thickness",
+    Range = {1, 5},
+    Increment = 1,
+    Suffix = "px",
+    CurrentValue = silentAimSettings.FOVThickness,
+    Flag = "FOVThickness",
+    Callback = function(Value)
+        silentAimSettings.FOVThickness = Value
+        updateFOV()
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "FOV Rainbow Mode",
+    CurrentValue = silentAimSettings.FOVRainbowMode,
+    Flag = "FOVRainbowMode",
+    Callback = function(Value)
+        silentAimSettings.FOVRainbowMode = Value
+        updateFOV()
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "FOV Rainbow Speed",
+    Range = {0.5, 3},
+    Increment = 0.1,
+    Suffix = "x",
+    CurrentValue = silentAimSettings.FOVRainbowSpeed,
+    Flag = "FOVRainbowSpeed",
+    Callback = function(Value)
+        silentAimSettings.FOVRainbowSpeed = Value
+    end,
+})
+
+-- Triggerbot Controls
+local TriggerbotSection = MainTab:CreateSection("Triggerbot Settings")
+MainTab:CreateToggle({
+    Name = "Triggerbot Enabled",
+    CurrentValue = triggerbotSettings.Enabled,
+    Flag = "TriggerbotEnabled",
+    Callback = function(Value)
+        triggerbotSettings.Enabled = Value
+        Toggle = Value
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Hold Click",
+    CurrentValue = triggerbotSettings.HoldClick,
+    Flag = "TriggerbotHoldClick",
+    Callback = function(Value)
+        triggerbotSettings.HoldClick = Value
+        HoldClick = Value
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Toggle Mode",
+    CurrentValue = triggerbotSettings.HotkeyToggle,
+    Flag = "TriggerbotToggleMode",
+    Callback = function(Value)
+        triggerbotSettings.HotkeyToggle = Value
+        HotkeyToggle = Value
+    end,
+})
+
+MainTab:CreateKeybind({
+    Name = "Triggerbot Keybind",
+    CurrentKeybind = triggerbotSettings.Hotkey,
+    HoldToInteract = false,
+    Flag = "TriggerbotKeybind",
+    Callback = function(Key)
+        triggerbotSettings.Hotkey = Key
+        Hotkey = Key
+    end,
+})
+
+-- ESP Controls
+local espSettings = UITab:CreateSection("ESP Settings")
+UITab:CreateToggle({
     Name = "ESP",
     CurrentValue = espSettings.Enabled,
     Flag = "ESPEnabled",
@@ -465,7 +603,7 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateToggle({
+UITab:CreateToggle({
     Name = "Show Everyone",
     CurrentValue = espSettings.ShowEveryone,
     Flag = "ShowEveryone",
@@ -475,7 +613,7 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateToggle({
+UITab:CreateToggle({
     Name = "Head Dot",
     CurrentValue = espSettings.ShowDot,
     Flag = "ShowDot",
@@ -485,7 +623,7 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateSlider({
+UITab:CreateSlider({
     Name = "Dot Size",
     Range = {2, 10},
     Increment = 1,
@@ -498,7 +636,7 @@ MainTab:CreateSlider({
     end,
 })
 
-MainTab:CreateToggle({
+UITab:CreateToggle({
     Name = "NameTags",
     CurrentValue = espSettings.ShowNames,
     Flag = "NameTagsEnabled",
@@ -508,7 +646,7 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateSlider({
+UITab:CreateSlider({
     Name = "NameTag Size",
     Range = {10, 30},
     Increment = 1,
@@ -521,7 +659,7 @@ MainTab:CreateSlider({
     end,
 })
 
-MainTab:CreateColorPicker({
+UITab:CreateColorPicker({
     Name = "ESP Color",
     Color = espSettings.BoxColor,
     Flag = "ESPColor",
@@ -533,7 +671,7 @@ MainTab:CreateColorPicker({
     end
 })
 
-MainTab:CreateColorPicker({
+UITab:CreateColorPicker({
     Name = "Dot Color",
     Color = espSettings.DotColor,
     Flag = "DotColor",
@@ -545,7 +683,7 @@ MainTab:CreateColorPicker({
     end
 })
 
-MainTab:CreateToggle({
+UITab:CreateToggle({
     Name = "Rainbow ESP",
     CurrentValue = espSettings.RainbowMode,
     Flag = "RainbowMode",
@@ -555,7 +693,7 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateSlider({
+UITab:CreateSlider({
     Name = "Rainbow Speed",
     Range = {0.5, 3},
     Increment = 0.1,
