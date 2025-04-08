@@ -1,4 +1,4 @@
---Patch notes v0.13 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, and fixed other known bugs, fixed the ESP bug
+--Patch notes v0.14 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, added teleport and fixed other known bugs
 
 -- Settings
 local HoldClick = true
@@ -98,6 +98,8 @@ local Window = Rayfield:CreateWindow({
 local MainTab = Window:CreateTab("Main", 4483362458)
 local UItab = Window:CreateTab("Visuals", 4483362458)
 local ThemesTab = Window:CreateTab("Themes", 4483362458)
+
+
 
 -- ESP Settings
 local espSettings = {
@@ -942,6 +944,52 @@ MainTab:CreateKeybind({
     Callback = function(Key)
         triggerbotSettings.Hotkey = Key
         Hotkey = Key
+    end,
+})
+
+local Teleportsection = MainTab:CreateSection("Teleport")
+local Input = MainTab:CreateInput({
+    Name = "Player Username",
+    PlaceholderText = "Enter username",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        -- Store the input text in targetUsername
+        targetUsername = Text
+    end,
+})
+
+local Button = MainTab:CreateButton({
+    Name = "Teleport to Player",
+    Callback = function()
+        local players = game:GetService("Players")
+        local targetPlayer = players:FindFirstChild(targetUsername)
+        
+        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local localPlayer = players.LocalPlayer
+            if localPlayer.Character then
+                localPlayer.Character:MoveTo(targetPlayer.Character.HumanoidRootPart.Position)
+                Rayfield:Notify({
+                    Title = "Teleport Success",
+                    Content = "Teleported to "..targetUsername,
+                    Duration = 3,
+                    Image = 4483362458,
+                })
+            else
+                Rayfield:Notify({
+                    Title = "Error",
+                    Content = "Your character doesn't exist",
+                    Duration = 3,
+                    Image = 4483362458,
+                })
+            end
+        else
+            Rayfield:Notify({
+                Title = "Error",
+                Content = "Player not found or doesn't have character",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        end
     end,
 })
 
