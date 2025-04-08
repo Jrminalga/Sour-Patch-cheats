@@ -1,4 +1,4 @@
---Patch notes v0.12 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, and fixed other known bugs
+--Patch notes v0.12 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, and fixed other known bugs, fixed ESP glich
 
 -- Settings
 local HoldClick = true
