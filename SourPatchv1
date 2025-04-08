@@ -1,3 +1,5 @@
+--Patch notes v0.12 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, and fixed other known bugs
+
 -- Settings
 local HoldClick = true
 local Hotkey = 't' -- Leave blank for always on
@@ -28,25 +30,40 @@ Mouse.KeyUp:Connect(function(key)
 end)
 
 RunService.RenderStepped:Connect(function()
-	if Toggle then
-		if Mouse.Target then
-			if Mouse.Target.Parent:FindFirstChild('Humanoid') then
-				if HoldClick then
-					if not CurrentlyPressed then
-						CurrentlyPressed = true
-						mouse1press()
-					end
-				else
-					mouse1click()
-				end
-			else
-				if HoldClick then
-					CurrentlyPressed = false
-					mouse1release()
-				end
-			end
-		end
-	end
+    if Toggle then
+        if Mouse.Target then
+            local character = Mouse.Target.Parent
+            if character:FindFirstChild('Humanoid') then
+                -- Check if the character belongs to a player and if they're an enemy
+                local player = Players:GetPlayerFromCharacter(character)
+                if player and player ~= LocalPlayer then
+                    -- Check team (if teams are enabled in the game)
+                    local shouldShoot = true
+                    if LocalPlayer.Team and player.Team then
+                        shouldShoot = LocalPlayer.Team ~= player.Team
+                    end
+                    
+                    if shouldShoot then
+                        if HoldClick then
+                            if not CurrentlyPressed then
+                                CurrentlyPressed = true
+                                mouse1press()
+                            end
+                        else
+                            mouse1click()
+                        end
+                        return
+                    end
+                end
+            end
+        end
+        
+        -- Release mouse if not aiming at an enemy
+        if HoldClick and CurrentlyPressed then
+            CurrentlyPressed = false
+            mouse1release()
+        end
+    end
 end)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
