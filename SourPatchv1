@@ -1,4 +1,4 @@
---Patch notes v0.12 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, and fixed other known bugs
+--Patch notes v0.13 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, and fixed other known bugs, fixed ESP
 
 -- Settings
 local HoldClick = true
@@ -96,82 +96,16 @@ local Window = Rayfield:CreateWindow({
 })
 
 local MainTab = Window:CreateTab("Main", 4483362458)
-local UITab = Window:CreateTab("Visuals", 4483362458)
+local UItab = Window:CreateTab("Visuals", 4483362458)
 local ThemesTab = Window:CreateTab("Themes", 4483362458)
 
--- Theme Dropdown
-local ThemeDropdown = ThemesTab:CreateDropdown({
-    Name = "Select Theme",
-    Options = {
-        "Default", 
-        "Amber Glow", 
-        "Amethyst", 
-        "Bloom", 
-        "Dark Blue", 
-        "Green", 
-        "Light", 
-        "Ocean", 
-        "Serenity"
-    },
-    CurrentOption = {"Default"},
-    MultipleOptions = false,
-    Flag = "ThemeSelector",
-    Callback = function(Selected)
-        local themeMap = {
-            ["Default"] = "Default",
-            ["Amber Glow"] = "AmberGlow",
-            ["Amethyst"] = "Amethyst",
-            ["Bloom"] = "Bloom",
-            ["Dark Blue"] = "DarkBlue",
-            ["Green"] = "Green",
-            ["Light"] = "Light",
-            ["Ocean"] = "Ocean",
-            ["Serenity"] = "Serenity"
-        }
-        
-        if themeMap[Selected[1]] then
-            Window.ModifyTheme(themeMap[Selected[1]])
-        end
-    end,
- })
-
--- Silent Aim Section
-local silentAimSettings = {
-    Enabled = false,
-    ShowFOV = true,
-    FOVSize = 60,
-    FOVColor = Color3.new(1, 0, 0),
-    FOVTransparency = 0.5,
-    FOVFilled = false,
-    FOVThickness = 1,
-    FOVRainbowMode = false,
-    FOVRainbowSpeed = 1
-}
-
-local silentAimConnections = {}
-local fovCircle = nil
-
--- Triggerbot Section
-local triggerbotSettings = {
-    Enabled = false,
-    HoldClick = true,
-    Hotkey = "t",
-    HotkeyToggle = true
-}
-
--- Store flight-related variables outside the toggle for access
-local flying = false
-local flyConnection1, flyConnection2
-local flyBV
-local currentFlySpeed = 50 -- Default speed
-
--- ESP Section
+-- ESP Settings
 local espSettings = {
     Enabled = false,
     ShowNames = true,
     ShowEveryone = false,
     ShowDot = true,
-    DotSize = 4,
+    DotSize = 4, -- New setting for dot size
     NameSize = 18,
     BoxColor = Color3.new(1, 0, 0),
     NameColor = Color3.new(1, 1, 1),
@@ -181,10 +115,29 @@ local espSettings = {
 }
 
 local espObjects = {}
-local espConnections = {}
 local rainbowHue = 0
 
--- Shared Functions
+-- Rainbow color generator
+local function getRainbowColor(hue)
+    return Color3.fromHSV(hue, 1, 1)
+end
+
+-- Update rainbow effect
+game:GetService("RunService").Heartbeat:Connect(function(delta)
+    if espSettings.RainbowMode then
+        rainbowHue = (rainbowHue + delta * 0.25 * espSettings.RainbowSpeed) % 1
+        for _, data in pairs(espObjects) do
+            if data.box then
+                data.box.Color = getRainbowColor(rainbowHue)
+            end
+            if data.dot then
+                data.dot.Color = getRainbowColor(rainbowHue)
+            end
+        end
+    end
+end)
+
+-- Check if Drawing is supported
 local function isDrawingSupported()
     local success, _ = pcall(function()
         return Drawing.new("Square")
@@ -192,37 +145,6 @@ local function isDrawingSupported()
     return success
 end
 
--- Rainbow color generator
-local function getRainbowColor(hue)
-    return Color3.fromHSV(hue, 1, 1)
-end
-
--- FOV Circle Functions
-local function createFOV()
-    if not isDrawingSupported() then return end
-    
-    fovCircle = Drawing.new("Circle")
-    fovCircle.Visible = silentAimSettings.Enabled and silentAimSettings.ShowFOV
-    fovCircle.Color = silentAimSettings.FOVRainbowMode and getRainbowColor(rainbowHue) or silentAimSettings.FOVColor
-    fovCircle.Transparency = silentAimSettings.FOVTransparency
-    fovCircle.Filled = silentAimSettings.FOVFilled
-    fovCircle.Thickness = silentAimSettings.FOVThickness
-    fovCircle.Radius = silentAimSettings.FOVSize
-    fovCircle.Position = Vector2.new(workspace.CurrentCamera.ViewportSize.X/2, workspace.CurrentCamera.ViewportSize.Y/2)
-end
-
-local function updateFOV()
-    if not fovCircle then return end
-    
-    fovCircle.Visible = silentAimSettings.Enabled and silentAimSettings.ShowFOV
-    fovCircle.Color = silentAimSettings.FOVRainbowMode and getRainbowColor(rainbowHue) or silentAimSettings.FOVColor
-    fovCircle.Transparency = silentAimSettings.FOVTransparency
-    fovCircle.Filled = silentAimSettings.FOVFilled
-    fovCircle.Thickness = silentAimSettings.FOVThickness
-    fovCircle.Radius = silentAimSettings.FOVSize
-end
-
--- ESP Functions
 local function createEsp(player)
     if not isDrawingSupported() then
         warn("Drawing library not supported in this environment!")
@@ -291,6 +213,7 @@ local function createEsp(player)
 
         -- Skip team check if ShowEveryone is enabled
         if not espSettings.ShowEveryone then
+            -- Team check (skip if game has no teams)
             local localPlayer = game.Players.LocalPlayer
             if player.Team and localPlayer.Team and player.Team == localPlayer.Team then
                 espBox.Visible = false
@@ -304,18 +227,22 @@ local function createEsp(player)
         local headPosition, headVisible = workspace.CurrentCamera:WorldToViewportPoint(head.Position)
         
         if rootVisible then
+            -- Calculate box size
             local size = (workspace.CurrentCamera:WorldToViewportPoint(humanoidRootPart.Position - Vector3.new(0, 3, 0))).Y - 
                          (workspace.CurrentCamera:WorldToViewportPoint(humanoidRootPart.Position + Vector3.new(0, 2.5, 0))).Y
             local scale = math.abs(size / 2)
             
+            -- Update box
             espBox.Size = Vector2.new(scale * 1.5, scale * 1.9)
             espBox.Position = Vector2.new(rootPosition.X - espBox.Size.X / 2, rootPosition.Y - espBox.Size.Y / 2)
             espBox.Visible = true
 
+            -- Update name tag
             nameTag.Size = espSettings.NameSize
             nameTag.Position = Vector2.new(rootPosition.X, rootPosition.Y - espBox.Size.Y / 2 - 20)
             nameTag.Visible = espSettings.ShowNames
             
+            -- Update head dot
             if headVisible and espSettings.ShowDot then
                 headDot.Position = Vector2.new(headPosition.X, headPosition.Y)
                 headDot.Radius = espSettings.DotSize
@@ -365,9 +292,6 @@ local function setupEsp()
         if player ~= game.Players.LocalPlayer then
             coroutine.wrap(function()
                 if espSettings.Enabled then
-                    if not player.Character then
-                        player.CharacterAdded:Wait()
-                    end
                     createEsp(player)
                 else
                     removeEsp(player)
@@ -377,27 +301,236 @@ local function setupEsp()
     end
 end
 
--- Rainbow effect update
-game:GetService("RunService").Heartbeat:Connect(function(delta)
-    if espSettings.RainbowMode or silentAimSettings.FOVRainbowMode then
-        rainbowHue = (rainbowHue + delta * 0.25 * (espSettings.RainbowMode and espSettings.RainbowSpeed or silentAimSettings.FOVRainbowSpeed)) % 1
-        
-        if espSettings.RainbowMode then
-            for _, data in pairs(espObjects) do
-                if data.box then
-                    data.box.Color = getRainbowColor(rainbowHue)
-                end
-                if data.dot then
-                    data.dot.Color = getRainbowColor(rainbowHue)
-                end
-            end
-        end
-        
-        if silentAimSettings.FOVRainbowMode and fovCircle then
-            fovCircle.Color = getRainbowColor(rainbowHue)
+-- Main ESP Toggle
+local WallhackSection = UItab:CreateSection("ESP settings")
+UItab:CreateToggle({
+    Name = "ESP",
+    CurrentValue = espSettings.Enabled,
+    Flag = "ESPEnabled",
+    Callback = function(Value)
+        espSettings.Enabled = Value
+        setupEsp()
+    end,
+})
+
+-- Show Everyone Toggle
+UItab:CreateToggle({
+    Name = "Show Everyone",
+    CurrentValue = espSettings.ShowEveryone,
+    Flag = "ShowEveryone",
+    Callback = function(Value)
+        espSettings.ShowEveryone = Value
+        setupEsp()
+    end,
+})
+
+-- Head Dot Toggle
+UItab:CreateToggle({
+    Name = "Head Dot",
+    CurrentValue = espSettings.ShowDot,
+    Flag = "ShowDot",
+    Callback = function(Value)
+        espSettings.ShowDot = Value
+        updateAllEsp()
+    end,
+})
+
+-- Dot Size Slider (NEW)
+UItab:CreateSlider({
+    Name = "Dot Size",
+    Range = {2, 10}, -- Range from 2 to 10 pixels
+    Increment = 1,
+    Suffix = "px",
+    CurrentValue = espSettings.DotSize,
+    Flag = "DotSize",
+    Callback = function(Value)
+        espSettings.DotSize = Value
+        updateAllEsp()
+    end,
+})
+
+-- Nametag Toggle
+UItab:CreateToggle({
+    Name = "NameTags",
+    CurrentValue = espSettings.ShowNames,
+    Flag = "NameTagsEnabled",
+    Callback = function(Value)
+        espSettings.ShowNames = Value
+        updateAllEsp()
+    end,
+})
+
+-- Nametag Size Slider
+UItab:CreateSlider({
+    Name = "NameTag Size",
+    Range = {10, 30},
+    Increment = 1,
+    Suffix = "px",
+    CurrentValue = espSettings.NameSize,
+    Flag = "NameTagSize",
+    Callback = function(Value)
+        espSettings.NameSize = Value
+        updateAllEsp()
+    end,
+})
+
+-- ESP Color Picker
+UItab:CreateColorPicker({
+    Name = "ESP Color",
+    Color = espSettings.BoxColor,
+    Flag = "ESPColor",
+    Callback = function(Value)
+        espSettings.BoxColor = Value
+        if not espSettings.RainbowMode then
+            updateAllEsp()
         end
     end
+})
+
+-- Dot Color Picker
+UItab:CreateColorPicker({
+    Name = "Dot Color",
+    Color = espSettings.DotColor,
+    Flag = "DotColor",
+    Callback = function(Value)
+        espSettings.DotColor = Value
+        if not espSettings.RainbowMode then
+            updateAllEsp()
+        end
+    end
+})
+
+-- Rainbow Mode Toggle
+UItab:CreateToggle({
+    Name = "Rainbow ESP",
+    CurrentValue = espSettings.RainbowMode,
+    Flag = "RainbowMode",
+    Callback = function(Value)
+        espSettings.RainbowMode = Value
+        updateAllEsp()
+    end,
+})
+
+-- Rainbow Speed Slider
+UItab:CreateSlider({
+    Name = "Rainbow Speed",
+    Range = {0.5, 3},
+    Increment = 0.1,
+    Suffix = "x",
+    CurrentValue = espSettings.RainbowSpeed,
+    Flag = "RainbowSpeed",
+    Callback = function(Value)
+        espSettings.RainbowSpeed = Value
+    end,
+})
+
+-- Player handlers
+game.Players.PlayerAdded:Connect(function(player)
+    if espSettings.Enabled then
+        createEsp(player)
+    end
 end)
+
+game.Players.PlayerRemoving:Connect(removeEsp)
+
+-- Theme Dropdown
+local ThemeDropdown = ThemesTab:CreateDropdown({
+    Name = "Select Theme",
+    Options = {
+        "Default", 
+        "Amber Glow", 
+        "Amethyst", 
+        "Bloom", 
+        "Dark Blue", 
+        "Green", 
+        "Light", 
+        "Ocean", 
+        "Serenity"
+    },
+    CurrentOption = {"Default"},
+    MultipleOptions = false,
+    Flag = "ThemeSelector",
+    Callback = function(Selected)
+        local themeMap = {
+            ["Default"] = "Default",
+            ["Amber Glow"] = "AmberGlow",
+            ["Amethyst"] = "Amethyst",
+            ["Bloom"] = "Bloom",
+            ["Dark Blue"] = "DarkBlue",
+            ["Green"] = "Green",
+            ["Light"] = "Light",
+            ["Ocean"] = "Ocean",
+            ["Serenity"] = "Serenity"
+        }
+        
+        if themeMap[Selected[1]] then
+            Window.ModifyTheme(themeMap[Selected[1]])
+        end
+    end,
+ })
+
+-- Silent Aim Section
+local silentAimSettings = {
+    Enabled = false,
+    ShowFOV = true,
+    FOVSize = 60,
+    FOVColor = Color3.new(1, 0, 0),
+    FOVTransparency = 0.5,
+    FOVFilled = false,
+    FOVThickness = 1,
+    FOVRainbowMode = false,
+    FOVRainbowSpeed = 1
+}
+
+local silentAimConnections = {}
+local fovCircle = nil
+
+-- Triggerbot Section
+local triggerbotSettings = {
+    Enabled = false,
+    HoldClick = true,
+    Hotkey = "t",
+    HotkeyToggle = true
+}
+
+-- Store flight-related variables outside the toggle for access
+local flying = false
+local flyConnection1, flyConnection2
+local flyBV
+local currentFlySpeed = 50 -- Default speed
+
+-- Shared Functions
+local function isDrawingSupported()
+    local success, _ = pcall(function()
+        return Drawing.new("Square")
+    end)
+    return success
+end
+
+-- FOV Circle Functions
+local function createFOV()
+    if not isDrawingSupported() then return end
+    
+    fovCircle = Drawing.new("Circle")
+    fovCircle.Visible = silentAimSettings.Enabled and silentAimSettings.ShowFOV
+    fovCircle.Color = silentAimSettings.FOVRainbowMode and Color3.fromHSV((tick() % 5)/5, 1, 1) or silentAimSettings.FOVColor
+    fovCircle.Transparency = silentAimSettings.FOVTransparency
+    fovCircle.Filled = silentAimSettings.FOVFilled
+    fovCircle.Thickness = silentAimSettings.FOVThickness
+    fovCircle.Radius = silentAimSettings.FOVSize
+    fovCircle.Position = Vector2.new(workspace.CurrentCamera.ViewportSize.X/2, workspace.CurrentCamera.ViewportSize.Y/2)
+end
+
+local function updateFOV()
+    if not fovCircle then return end
+    
+    fovCircle.Visible = silentAimSettings.Enabled and silentAimSettings.ShowFOV
+    fovCircle.Color = silentAimSettings.FOVRainbowMode and Color3.fromHSV((tick() % 5)/5, 1, 1) or silentAimSettings.FOVColor
+    fovCircle.Transparency = silentAimSettings.FOVTransparency
+    fovCircle.Filled = silentAimSettings.FOVFilled
+    fovCircle.Thickness = silentAimSettings.FOVThickness
+    fovCircle.Radius = silentAimSettings.FOVSize
+end
 
 --createslider for Fly
 local FlySection = MainTab:CreateSection("Fly Settings")
@@ -750,144 +883,6 @@ MainTab:CreateKeybind({
     end,
 })
 
--- ESP Controls
-local espSettings = UITab:CreateSection("ESP Settings")
-UITab:CreateToggle({
-    Name = "ESP",
-    CurrentValue = espSettings.Enabled,
-    Flag = "ESPEnabled",
-    Callback = function(Value)
-        espSettings.Enabled = Value
-        
-        for _, connection in ipairs(espConnections) do
-            connection:Disconnect()
-        end
-        espConnections = {}
-        
-        if Value then
-            table.insert(espConnections, game.Players.PlayerAdded:Connect(function(player)
-                if espSettings.Enabled then
-                    coroutine.wrap(function()
-                        if not player.Character then
-                            player.CharacterAdded:Wait()
-                        end
-                        createEsp(player)
-                    end)()
-                end
-            end))
-            
-            table.insert(espConnections, game.Players.PlayerRemoving:Connect(removeEsp))
-            setupEsp()
-        else
-            for player in pairs(espObjects) do
-                removeEsp(player)
-            end
-        end
-    end,
-})
-
-UITab:CreateToggle({
-    Name = "Show Everyone",
-    CurrentValue = espSettings.ShowEveryone,
-    Flag = "ShowEveryone",
-    Callback = function(Value)
-        espSettings.ShowEveryone = Value
-        setupEsp()
-    end,
-})
-
-UITab:CreateToggle({
-    Name = "Head Dot",
-    CurrentValue = espSettings.ShowDot,
-    Flag = "ShowDot",
-    Callback = function(Value)
-        espSettings.ShowDot = Value
-        updateAllEsp()
-    end,
-})
-
-UITab:CreateSlider({
-    Name = "Dot Size",
-    Range = {2, 10},
-    Increment = 1,
-    Suffix = "px",
-    CurrentValue = espSettings.DotSize,
-    Flag = "DotSize",
-    Callback = function(Value)
-        espSettings.DotSize = Value
-        updateAllEsp()
-    end,
-})
-
-UITab:CreateToggle({
-    Name = "NameTags",
-    CurrentValue = espSettings.ShowNames,
-    Flag = "NameTagsEnabled",
-    Callback = function(Value)
-        espSettings.ShowNames = Value
-        updateAllEsp()
-    end,
-})
-
-UITab:CreateSlider({
-    Name = "NameTag Size",
-    Range = {10, 30},
-    Increment = 1,
-    Suffix = "px",
-    CurrentValue = espSettings.NameSize,
-    Flag = "NameTagSize",
-    Callback = function(Value)
-        espSettings.NameSize = Value
-        updateAllEsp()
-    end,
-})
-
-UITab:CreateColorPicker({
-    Name = "ESP Color",
-    Color = espSettings.BoxColor,
-    Flag = "ESPColor",
-    Callback = function(Value)
-        espSettings.BoxColor = Value
-        if not espSettings.RainbowMode then
-            updateAllEsp()
-        end
-    end
-})
-
-UITab:CreateColorPicker({
-    Name = "Dot Color",
-    Color = espSettings.DotColor,
-    Flag = "DotColor",
-    Callback = function(Value)
-        espSettings.DotColor = Value
-        if not espSettings.RainbowMode then
-            updateAllEsp()
-        end
-    end
-})
-
-UITab:CreateToggle({
-    Name = "Rainbow ESP",
-    CurrentValue = espSettings.RainbowMode,
-    Flag = "RainbowMode",
-    Callback = function(Value)
-        espSettings.RainbowMode = Value
-        updateAllEsp()
-    end,
-})
-
-UITab:CreateSlider({
-    Name = "Rainbow Speed",
-    Range = {0.5, 3},
-    Increment = 0.1,
-    Suffix = "x",
-    CurrentValue = espSettings.RainbowSpeed,
-    Flag = "RainbowSpeed",
-    Callback = function(Value)
-        espSettings.RainbowSpeed = Value
-    end,
-})
-
 -- Screen resizing handler for FOV circle
 game:GetService("RunService").RenderStepped:Connect(function()
     if fovCircle and silentAimSettings.Enabled and silentAimSettings.ShowFOV then
@@ -898,12 +893,6 @@ end)
 
 -- Cleanup
 Rayfield:DestroySignal():Connect(function()
-    for player in pairs(espObjects) do
-        removeEsp(player)
-    end
-    for _, connection in ipairs(espConnections) do
-        connection:Disconnect()
-    end
     for _, connection in ipairs(silentAimConnections) do
         connection:Disconnect()
     end
