@@ -1,4 +1,4 @@
---Patch notes v0.13 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, and fixed other known bugs, fixed ESP
+--Patch notes v0.12 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, and fixed other known bugs
 
 -- Settings
 local HoldClick = true
@@ -105,17 +105,19 @@ local espSettings = {
     ShowNames = true,
     ShowEveryone = false,
     ShowDot = true,
-    DotSize = 4, -- New setting for dot size
+    DotSize = 4,
     NameSize = 18,
     BoxColor = Color3.new(1, 0, 0),
     NameColor = Color3.new(1, 1, 1),
     DotColor = Color3.new(1, 1, 0),
     RainbowMode = false,
-    RainbowSpeed = 1
+    RainbowSpeed = 1,
+    RefreshInterval = 10 -- New refresh interval setting (seconds)
 }
 
 local espObjects = {}
 local rainbowHue = 0
+local refreshConnection = nil -- Connection for the refresh loop
 
 -- Rainbow color generator
 local function getRainbowColor(hue)
@@ -287,6 +289,40 @@ local function updateAllEsp()
     end
 end
 
+-- Function to refresh all ESP elements
+local function refreshAllEsp()
+    -- First remove all existing ESP
+    for player, _ in pairs(espObjects) do
+        removeEsp(player)
+    end
+    
+    -- Then recreate ESP for all valid players
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if player ~= game.Players.LocalPlayer then
+            coroutine.wrap(function()
+                if espSettings.Enabled then
+                    createEsp(player)
+                end
+            end)()
+        end
+    end
+end
+
+-- Function to start/restart the refresh loop
+local function startRefreshLoop()
+    if refreshConnection then
+        refreshConnection:Disconnect()
+    end
+    
+    local lastRefreshTime = os.time()
+    refreshConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        if os.time() - lastRefreshTime >= espSettings.RefreshInterval then
+            lastRefreshTime = os.time()
+            refreshAllEsp()
+        end
+    end)
+end
+
 local function setupEsp()
     for _, player in ipairs(game.Players:GetPlayers()) do
         if player ~= game.Players.LocalPlayer then
@@ -298,6 +334,13 @@ local function setupEsp()
                 end
             end)()
         end
+    end
+    
+    if espSettings.Enabled then
+        startRefreshLoop()
+    elseif refreshConnection then
+        refreshConnection:Disconnect()
+        refreshConnection = nil
     end
 end
 
@@ -335,10 +378,10 @@ UItab:CreateToggle({
     end,
 })
 
--- Dot Size Slider (NEW)
+-- Dot Size Slider
 UItab:CreateSlider({
     Name = "Dot Size",
-    Range = {2, 10}, -- Range from 2 to 10 pixels
+    Range = {2, 10},
     Increment = 1,
     Suffix = "px",
     CurrentValue = espSettings.DotSize,
@@ -424,6 +467,22 @@ UItab:CreateSlider({
     end,
 })
 
+-- ESP Refresh Rate Slider
+UItab:CreateSlider({
+    Name = "ESP Refresh Rate",
+    Range = {5, 60}, -- 5 to 60 seconds
+    Increment = 5,
+    Suffix = "sec",
+    CurrentValue = espSettings.RefreshInterval,
+    Flag = "RefreshInterval",
+    Callback = function(Value)
+        espSettings.RefreshInterval = Value
+        if espSettings.Enabled then
+            startRefreshLoop() -- Restart the loop with new interval
+        end
+    end,
+})
+
 -- Player handlers
 game.Players.PlayerAdded:Connect(function(player)
     if espSettings.Enabled then
@@ -432,6 +491,9 @@ game.Players.PlayerAdded:Connect(function(player)
 end)
 
 game.Players.PlayerRemoving:Connect(removeEsp)
+
+-- Initial setup
+setupEsp()
 
 -- Theme Dropdown
 local ThemeDropdown = ThemesTab:CreateDropdown({
