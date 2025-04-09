@@ -1,5 +1,3 @@
---Patch notes v0.132 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, added teleport, fixed the ESP fps lag and fixed other known bugs
-
 -- Settings
 local HoldClick = true
 local Hotkey = 't' -- Leave blank for always on
@@ -98,6 +96,76 @@ local Window = Rayfield:CreateWindow({
 local MainTab = Window:CreateTab("Main", 4483362458)
 local UItab = Window:CreateTab("Visuals", 4483362458)
 local ThemesTab = Window:CreateTab("Themes", 4483362458)
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
+local UpdatesTab = Window:CreateTab("Updates", 4483362458)
+
+local SettingsConfigSection = SettingsTab:CreateSection("Config Settings")
+-- Add a button to save the current configuration
+local SaveButton = SettingsTab:CreateButton({
+    Name = "Save Current Configuration",
+    Callback = function()
+        Rayfield:SaveConfiguration()
+        Rayfield:Notify({
+            Title = "Configuration Saved!",
+            Content = "Your settings have been saved successfully.",
+            Duration = 3,
+            Image = 4483362458
+        })
+    end,
+})
+
+-- Add a button to load the saved configuration
+local LoadButton = SettingsTab:CreateButton({
+    Name = "Load Saved Configuration",
+    Callback = function()
+        Rayfield:LoadConfiguration()
+        Rayfield:Notify({
+            Title = "Configuration Loaded",
+            Content = "Your settings have been loaded successfully.",
+            Duration = 3,
+            Image = 4483362458
+        })
+    end,
+})
+
+-- Theme Selector Dropdown
+local ThemeDropdown = ThemesTab:CreateDropdown({
+    Name = "Select Theme",
+    Options = {
+        "Default", 
+        "Amber Glow", 
+        "Amethyst", 
+        "Bloom", 
+        "Dark Blue", 
+        "Green", 
+        "Light", 
+        "Ocean", 
+        "Serenity"
+    },
+    CurrentOption = {"Default"},
+    MultipleOptions = false,
+    Flag = "ThemeSelector",
+    Callback = function(Selected)
+        local themeMap = {
+            ["Default"] = "Default",
+            ["Amber Glow"] = "AmberGlow",
+            ["Amethyst"] = "Amethyst",
+            ["Bloom"] = "Bloom",
+            ["Dark Blue"] = "DarkBlue",
+            ["Green"] = "Green",
+            ["Light"] = "Light",
+            ["Ocean"] = "Ocean",
+            ["Serenity"] = "Serenity"
+        }
+        
+        local themeIdentifier = themeMap[Selected[1]]
+        Window.ModifyTheme(themeIdentifier)
+    end,
+ })
+
+local Label = UpdatesTab:CreateLabel("fixed ESP fps bug", 4483362458, Color3.fromRGB(255, 255, 255), false) -- Title, Icon, Color, IgnoreTheme
+local Label = UpdatesTab:CreateLabel("able to save a config in settings tab", 4483362458, Color3.fromRGB(255, 255, 255), false) -- Title, Icon, Color, IgnoreTheme
+local Label = UpdatesTab:CreateLabel("Fixed themes", 4483362458, Color3.fromRGB(255, 255, 255), false) -- Title, Icon, Color, IgnoreTheme
 
 -- ESP Settings
 local espSettings = {
@@ -1054,39 +1122,3 @@ Rayfield:DestroySignal():Connect(function()
     end
     playerConnections = {}
 end)
-
--- Theme Dropdown
-local ThemeDropdown = ThemesTab:CreateDropdown({
-    Name = "Select Theme",
-    Options = {
-        "Default", 
-        "Amber Glow", 
-        "Amethyst", 
-        "Bloom", 
-        "Dark Blue", 
-        "Green", 
-        "Light", 
-        "Ocean", 
-        "Serenity"
-    },
-    CurrentOption = {"Default"},
-    MultipleOptions = false,
-    Flag = "ThemeSelector",
-    Callback = function(Selected)
-        local themeMap = {
-            ["Default"] = "Default",
-            ["Amber Glow"] = "AmberGlow",
-            ["Amethyst"] = "Amethyst",
-            ["Bloom"] = "Bloom",
-            ["Dark Blue"] = "DarkBlue",
-            ["Green"] = "Green",
-            ["Light"] = "Light",
-            ["Ocean"] = "Ocean",
-            ["Serenity"] = "Serenity"
-        }
-        
-        if themeMap[Selected[1]] then
-            Window.ModifyTheme(themeMap[Selected[1]])
-        end
-    end,
-})
