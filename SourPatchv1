@@ -1,4 +1,4 @@
---Patch notes v0.14 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, added teleport and fixed other known bugs
+--Patch notes v0.132 added better organization, fixed the issue where triggerbot would shoot at teammates, added fly hack, added teleport, fixed the ESP fps lag and fixed other known bugs
 
 -- Settings
 local HoldClick = true
@@ -99,8 +99,6 @@ local MainTab = Window:CreateTab("Main", 4483362458)
 local UItab = Window:CreateTab("Visuals", 4483362458)
 local ThemesTab = Window:CreateTab("Themes", 4483362458)
 
-
-
 -- ESP Settings
 local espSettings = {
     Enabled = false,
@@ -114,12 +112,15 @@ local espSettings = {
     DotColor = Color3.new(1, 1, 0),
     RainbowMode = false,
     RainbowSpeed = 1,
-    RefreshInterval = 10 -- New refresh interval setting (seconds)
+    ToggleInterval = 5, -- Time between toggles (seconds)
+    ToggleDuration = 0.1 -- How long ESP stays off during toggle (seconds)
 }
 
 local espObjects = {}
+local playerConnections = {} -- Table to store player connections
 local rainbowHue = 0
-local refreshConnection = nil -- Connection for the refresh loop
+local toggleConnection = nil
+local espVisible = true -- Track current visibility state
 
 -- Rainbow color generator
 local function getRainbowColor(hue)
@@ -127,7 +128,7 @@ local function getRainbowColor(hue)
 end
 
 -- Update rainbow effect
-game:GetService("RunService").Heartbeat:Connect(function(delta)
+local rainbowConnection = game:GetService("RunService").Heartbeat:Connect(function(delta)
     if espSettings.RainbowMode then
         rainbowHue = (rainbowHue + delta * 0.25 * espSettings.RainbowSpeed) % 1
         for _, data in pairs(espObjects) do
@@ -155,12 +156,25 @@ local function createEsp(player)
         return
     end
 
-    local character = player.Character or player.CharacterAdded:Wait()
-    if not character then return end
+    -- Clean up any existing connection for this player
+    if playerConnections[player] then
+        playerConnections[player]:Disconnect()
+        playerConnections[player] = nil
+    end
 
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character:FindFirstChild("Humanoid")
-    local head = character:FindFirstChild("Head")
+    -- Wait for character to exist
+    local character = player.Character
+    if not character then
+        playerConnections[player] = player.CharacterAdded:Connect(function(newChar)
+            character = newChar
+            createEsp(player) -- Retry now that character exists
+        end)
+        return
+    end
+
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 5) -- Wait up to 5 seconds
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    local head = character:WaitForChild("Head", 5)
     if not humanoidRootPart or not humanoid or not head then return end
 
     -- Create ESP Box
@@ -239,18 +253,18 @@ local function createEsp(player)
             -- Update box
             espBox.Size = Vector2.new(scale * 1.5, scale * 1.9)
             espBox.Position = Vector2.new(rootPosition.X - espBox.Size.X / 2, rootPosition.Y - espBox.Size.Y / 2)
-            espBox.Visible = true
+            espBox.Visible = espVisible and true
 
             -- Update name tag
             nameTag.Size = espSettings.NameSize
             nameTag.Position = Vector2.new(rootPosition.X, rootPosition.Y - espBox.Size.Y / 2 - 20)
-            nameTag.Visible = espSettings.ShowNames
+            nameTag.Visible = espVisible and espSettings.ShowNames
             
             -- Update head dot
             if headVisible and espSettings.ShowDot then
                 headDot.Position = Vector2.new(headPosition.X, headPosition.Y)
                 headDot.Radius = espSettings.DotSize
-                headDot.Visible = true
+                headDot.Visible = espVisible and true
             else
                 headDot.Visible = false
             end
@@ -281,51 +295,75 @@ local function updateAllEsp()
         end
         if data.name then
             data.name.Size = espSettings.NameSize
-            data.name.Visible = espSettings.ShowNames and espSettings.Enabled
+            data.name.Visible = espVisible and espSettings.ShowNames and espSettings.Enabled
         end
         if data.dot then
             data.dot.Color = espSettings.RainbowMode and getRainbowColor(rainbowHue) or espSettings.DotColor
-            data.dot.Visible = espSettings.ShowDot and espSettings.Enabled
+            data.dot.Visible = espVisible and espSettings.ShowDot and espSettings.Enabled
             data.dot.Radius = espSettings.DotSize
         end
     end
 end
 
--- Function to refresh all ESP elements
-local function refreshAllEsp()
-    -- First remove all existing ESP
-    for player, _ in pairs(espObjects) do
-        removeEsp(player)
-    end
+-- Function to toggle ESP visibility quickly
+local function toggleEspVisibility()
+    if not espSettings.Enabled then return end
     
-    -- Then recreate ESP for all valid players
-    for _, player in ipairs(game.Players:GetPlayers()) do
-        if player ~= game.Players.LocalPlayer then
-            coroutine.wrap(function()
-                if espSettings.Enabled then
-                    createEsp(player)
-                end
-            end)()
-        end
+    -- Toggle visibility
+    espVisible = not espVisible
+    updateAllEsp()
+    
+    -- If we just turned it off, schedule turning it back on
+    if not espVisible then
+        task.delay(espSettings.ToggleDuration, function()
+            espVisible = true
+            updateAllEsp()
+        end)
     end
 end
 
--- Function to start/restart the refresh loop
-local function startRefreshLoop()
-    if refreshConnection then
-        refreshConnection:Disconnect()
+-- Function to start/restart the toggle loop
+local function startToggleLoop()
+    if toggleConnection then
+        toggleConnection:Disconnect()
     end
     
-    local lastRefreshTime = os.time()
-    refreshConnection = game:GetService("RunService").Heartbeat:Connect(function()
-        if os.time() - lastRefreshTime >= espSettings.RefreshInterval then
-            lastRefreshTime = os.time()
-            refreshAllEsp()
-        end
+    toggleConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        -- We'll manage the timing ourselves for more precision
     end)
+    
+    -- Start the toggle loop in a separate thread
+    coroutine.wrap(function()
+        while espSettings.Enabled and toggleConnection do
+            toggleEspVisibility()
+            wait(espSettings.ToggleInterval)
+        end
+    end)()
+end
+
+-- Player added handler
+local function onPlayerAdded(player)
+    if player ~= game.Players.LocalPlayer then
+        playerConnections[player] = player.CharacterAdded:Connect(function(character)
+            if espSettings.Enabled then
+                createEsp(player)
+            end
+        end)
+        
+        if player.Character and espSettings.Enabled then
+            createEsp(player)
+        end
+    end
 end
 
 local function setupEsp()
+    -- Clear existing connections
+    for player, connection in pairs(playerConnections) do
+        connection:Disconnect()
+    end
+    playerConnections = {}
+    
+    -- Setup ESP for existing players
     for _, player in ipairs(game.Players:GetPlayers()) do
         if player ~= game.Players.LocalPlayer then
             coroutine.wrap(function()
@@ -339,10 +377,11 @@ local function setupEsp()
     end
     
     if espSettings.Enabled then
-        startRefreshLoop()
-    elseif refreshConnection then
-        refreshConnection:Disconnect()
-        refreshConnection = nil
+        espVisible = true -- Reset visibility when enabling
+        startToggleLoop()
+    elseif toggleConnection then
+        toggleConnection:Disconnect()
+        toggleConnection = nil
     end
 end
 
@@ -365,7 +404,7 @@ UItab:CreateToggle({
     Flag = "ShowEveryone",
     Callback = function(Value)
         espSettings.ShowEveryone = Value
-        setupEsp()
+        updateAllEsp()
     end,
 })
 
@@ -469,69 +508,48 @@ UItab:CreateSlider({
     end,
 })
 
--- ESP Refresh Rate Slider
+-- ESP Toggle Interval Slider
 UItab:CreateSlider({
-    Name = "ESP Refresh Rate",
-    Range = {5, 60}, -- 5 to 60 seconds
-    Increment = 5,
+    Name = "ESP Toggle Interval",
+    Range = {0.1, 10}, -- 0.1 to 10 seconds
+    Increment = 0.1,
     Suffix = "sec",
-    CurrentValue = espSettings.RefreshInterval,
-    Flag = "RefreshInterval",
+    CurrentValue = espSettings.ToggleInterval,
+    Flag = "ToggleInterval",
     Callback = function(Value)
-        espSettings.RefreshInterval = Value
+        espSettings.ToggleInterval = Value
         if espSettings.Enabled then
-            startRefreshLoop() -- Restart the loop with new interval
+            startToggleLoop() -- Restart the loop with new interval
         end
     end,
 })
 
--- Player handlers
-game.Players.PlayerAdded:Connect(function(player)
-    if espSettings.Enabled then
-        createEsp(player)
-    end
-end)
+-- ESP Toggle Duration Slider
+UItab:CreateSlider({
+    Name = "ESP Off Duration",
+    Range = {0.05, 1}, -- 0.05 to 1 seconds
+    Increment = 0.05,
+    Suffix = "sec",
+    CurrentValue = espSettings.ToggleDuration,
+    Flag = "ToggleDuration",
+    Callback = function(Value)
+        espSettings.ToggleDuration = Value
+    end,
+})
 
-game.Players.PlayerRemoving:Connect(removeEsp)
+-- Player handlers
+game.Players.PlayerAdded:Connect(onPlayerAdded)
+
+game.Players.PlayerRemoving:Connect(function(player)
+    if playerConnections[player] then
+        playerConnections[player]:Disconnect()
+        playerConnections[player] = nil
+    end
+    removeEsp(player)
+end)
 
 -- Initial setup
 setupEsp()
-
--- Theme Dropdown
-local ThemeDropdown = ThemesTab:CreateDropdown({
-    Name = "Select Theme",
-    Options = {
-        "Default", 
-        "Amber Glow", 
-        "Amethyst", 
-        "Bloom", 
-        "Dark Blue", 
-        "Green", 
-        "Light", 
-        "Ocean", 
-        "Serenity"
-    },
-    CurrentOption = {"Default"},
-    MultipleOptions = false,
-    Flag = "ThemeSelector",
-    Callback = function(Selected)
-        local themeMap = {
-            ["Default"] = "Default",
-            ["Amber Glow"] = "AmberGlow",
-            ["Amethyst"] = "Amethyst",
-            ["Bloom"] = "Bloom",
-            ["Dark Blue"] = "DarkBlue",
-            ["Green"] = "Green",
-            ["Light"] = "Light",
-            ["Ocean"] = "Ocean",
-            ["Serenity"] = "Serenity"
-        }
-        
-        if themeMap[Selected[1]] then
-            Window.ModifyTheme(themeMap[Selected[1]])
-        end
-    end,
- })
 
 -- Silent Aim Section
 local silentAimSettings = {
@@ -549,6 +567,43 @@ local silentAimSettings = {
 local silentAimConnections = {}
 local fovCircle = nil
 
+-- Create FOV circle with rainbow support
+local function createFOV()
+    if not isDrawingSupported() then return end
+    
+    fovCircle = Drawing.new("Circle")
+    fovCircle.Visible = silentAimSettings.Enabled and silentAimSettings.ShowFOV
+    fovCircle.Color = silentAimSettings.FOVColor
+    fovCircle.Transparency = silentAimSettings.FOVTransparency
+    fovCircle.Filled = silentAimSettings.FOVFilled
+    fovCircle.Thickness = silentAimSettings.FOVThickness
+    fovCircle.Radius = silentAimSettings.FOVSize
+    fovCircle.Position = Vector2.new(workspace.CurrentCamera.ViewportSize.X/2, workspace.CurrentCamera.ViewportSize.Y/2)
+    
+    -- Rainbow effect for FOV circle
+    if silentAimSettings.FOVRainbowMode then
+        coroutine.wrap(function()
+            while fovCircle and silentAimSettings.FOVRainbowMode do
+                fovCircle.Color = Color3.fromHSV(tick() % 5 / 5, 1, 1)
+                game:GetService("RunService").RenderStepped:Wait()
+            end
+        end)()
+    end
+end
+
+local function updateFOV()
+    if not fovCircle then return end
+    
+    fovCircle.Visible = silentAimSettings.Enabled and silentAimSettings.ShowFOV
+    if not silentAimSettings.FOVRainbowMode then
+        fovCircle.Color = silentAimSettings.FOVColor
+    end
+    fovCircle.Transparency = silentAimSettings.FOVTransparency
+    fovCircle.Filled = silentAimSettings.FOVFilled
+    fovCircle.Thickness = silentAimSettings.FOVThickness
+    fovCircle.Radius = silentAimSettings.FOVSize
+end
+
 -- Triggerbot Section
 local triggerbotSettings = {
     Enabled = false,
@@ -563,41 +618,7 @@ local flyConnection1, flyConnection2
 local flyBV
 local currentFlySpeed = 50 -- Default speed
 
--- Shared Functions
-local function isDrawingSupported()
-    local success, _ = pcall(function()
-        return Drawing.new("Square")
-    end)
-    return success
-end
-
--- FOV Circle Functions
-local function createFOV()
-    if not isDrawingSupported() then return end
-    
-    fovCircle = Drawing.new("Circle")
-    fovCircle.Visible = silentAimSettings.Enabled and silentAimSettings.ShowFOV
-    fovCircle.Color = silentAimSettings.FOVRainbowMode and Color3.fromHSV((tick() % 5)/5, 1, 1) or silentAimSettings.FOVColor
-    fovCircle.Transparency = silentAimSettings.FOVTransparency
-    fovCircle.Filled = silentAimSettings.FOVFilled
-    fovCircle.Thickness = silentAimSettings.FOVThickness
-    fovCircle.Radius = silentAimSettings.FOVSize
-    fovCircle.Position = Vector2.new(workspace.CurrentCamera.ViewportSize.X/2, workspace.CurrentCamera.ViewportSize.Y/2)
-end
-
-local function updateFOV()
-    if not fovCircle then return end
-    
-    fovCircle.Visible = silentAimSettings.Enabled and silentAimSettings.ShowFOV
-    fovCircle.Color = silentAimSettings.FOVRainbowMode and Color3.fromHSV((tick() % 5)/5, 1, 1) or silentAimSettings.FOVColor
-    fovCircle.Transparency = silentAimSettings.FOVTransparency
-    fovCircle.Filled = silentAimSettings.FOVFilled
-    fovCircle.Thickness = silentAimSettings.FOVThickness
-    fovCircle.Radius = silentAimSettings.FOVSize
-end
-
---createslider for Fly
-local FlySection = MainTab:CreateSection("Fly Settings")
+-- Create the speed slider first so it's available when the toggle is created
 local SpeedSlider = MainTab:CreateSlider({
     Name = "Fly Speed",
     Range = {1, 200},
@@ -610,8 +631,7 @@ local SpeedSlider = MainTab:CreateSlider({
     end,
 })
 
--- Create the speed slider first so it's available when the toggle is created
-local Toggle = MainTab:CreateToggle({
+local FlyToggle = MainTab:CreateToggle({
     Name = "Fly (Press F to activate)",
     CurrentValue = false,
     Flag = "FlyToggle",
@@ -722,7 +742,7 @@ local Toggle = MainTab:CreateToggle({
 
 -- Silent Aim Toggle
 local silentAimUI = MainTab:CreateSection("Silent Aim Settings")
-local Toggle = MainTab:CreateToggle({
+local SilentAimToggle = MainTab:CreateToggle({
     Name = "Silent Aim",
     CurrentValue = silentAimSettings.Enabled,
     Flag = "Toggle1",
@@ -889,6 +909,17 @@ MainTab:CreateToggle({
     Callback = function(Value)
         silentAimSettings.FOVRainbowMode = Value
         updateFOV()
+        if Value then
+            -- Restart rainbow effect
+            if fovCircle then
+                coroutine.wrap(function()
+                    while fovCircle and silentAimSettings.FOVRainbowMode do
+                        fovCircle.Color = Color3.fromHSV(tick() % 5 / 5, 1, 1)
+                        game:GetService("RunService").RenderStepped:Wait()
+                    end
+                end)()
+            end
+        end
     end,
 })
 
@@ -1010,4 +1041,52 @@ Rayfield:DestroySignal():Connect(function()
         fovCircle:Remove()
         fovCircle = nil
     end
+    if toggleConnection then
+        toggleConnection:Disconnect()
+        toggleConnection = nil
+    end
+    if rainbowConnection then
+        rainbowConnection:Disconnect()
+    end
+    -- Clean up player connections
+    for player, connection in pairs(playerConnections) do
+        connection:Disconnect()
+    end
+    playerConnections = {}
 end)
+
+-- Theme Dropdown
+local ThemeDropdown = ThemesTab:CreateDropdown({
+    Name = "Select Theme",
+    Options = {
+        "Default", 
+        "Amber Glow", 
+        "Amethyst", 
+        "Bloom", 
+        "Dark Blue", 
+        "Green", 
+        "Light", 
+        "Ocean", 
+        "Serenity"
+    },
+    CurrentOption = {"Default"},
+    MultipleOptions = false,
+    Flag = "ThemeSelector",
+    Callback = function(Selected)
+        local themeMap = {
+            ["Default"] = "Default",
+            ["Amber Glow"] = "AmberGlow",
+            ["Amethyst"] = "Amethyst",
+            ["Bloom"] = "Bloom",
+            ["Dark Blue"] = "DarkBlue",
+            ["Green"] = "Green",
+            ["Light"] = "Light",
+            ["Ocean"] = "Ocean",
+            ["Serenity"] = "Serenity"
+        }
+        
+        if themeMap[Selected[1]] then
+            Window.ModifyTheme(themeMap[Selected[1]])
+        end
+    end,
+})
