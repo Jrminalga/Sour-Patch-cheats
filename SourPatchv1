@@ -1,7 +1,7 @@
 -- Settings
 local HoldClick = true
-local Hotkey = 't' -- Leave blank for always on
-local HotkeyToggle = true -- True if you want it to toggle on and off with a click
+local Hotkey = 't'
+local HotkeyToggle = true
 
 local Players = game:GetService('Players')
 local RunService = game:GetService('RunService')
@@ -100,7 +100,6 @@ local SettingsTab = Window:CreateTab("Settings", 4483362458)
 local UpdatesTab = Window:CreateTab("Updates", 4483362458)
 
 local SettingsConfigSection = SettingsTab:CreateSection("Config Settings")
--- Add a button to save the current configuration
 local SaveButton = SettingsTab:CreateButton({
     Name = "Save Current Configuration",
     Callback = function()
@@ -114,7 +113,6 @@ local SaveButton = SettingsTab:CreateButton({
     end,
 })
 
--- Add a button to load the saved configuration
 local LoadButton = SettingsTab:CreateButton({
     Name = "Load Saved Configuration",
     Callback = function()
@@ -235,7 +233,7 @@ local function createEsp(player)
     if not character then
         playerConnections[player] = player.CharacterAdded:Connect(function(newChar)
             character = newChar
-            createEsp(player) -- Retry now that character exists
+            createEsp(player) -- if u are reading this your very sigma
         end)
         return
     end
