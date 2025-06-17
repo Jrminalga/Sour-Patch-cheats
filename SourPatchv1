@@ -748,6 +748,7 @@ local jumpCooldown = 0.2
 -- Create sections
 local SIGMABhop = MainTab:CreateSection("Bhop")
 
+
 -- BHop UI Elements
 local BhopPowerSlider = MainTab:CreateSlider({
     Name = "BHop Power",
@@ -907,6 +908,9 @@ local BhopToggle = MainTab:CreateToggle({
         end))
     end,
 })
+
+-- No clip sections
+local SIGMAClip = MainTab:CreateSection("NoClip")
 
 -- NoClip function
 local function noclipLoop()
