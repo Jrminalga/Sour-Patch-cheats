@@ -736,15 +736,19 @@ local FlyToggle = MainTab:CreateToggle({
 
 -- Configuration variables
 local bhopEnabled = false
-local connections = {}
+local noclipEnabled = false
+local bhopConnections = {}
+local noclipConnections = {}
 local bhopPower = 50
 local gravity = 150
 local movementSpeed = 100
 local lastJumpTime = 0
 local jumpCooldown = 0.2
 
+-- Create sections
 local SIGMABhop = MainTab:CreateSection("Bhop")
--- UI Elements
+
+-- BHop UI Elements
 local BhopPowerSlider = MainTab:CreateSlider({
     Name = "BHop Power",
     Range = {1, 200},
@@ -766,6 +770,12 @@ local GravitySlider = MainTab:CreateSlider({
     Flag = "GravitySlider",
     Callback = function(Value)
         gravity = Value
+        if bhopEnabled and game.Players.LocalPlayer.Character then
+            local rootPart = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or game.Players.LocalPlayer.Character:FindFirstChild("Torso")
+            if rootPart and rootPart:FindFirstChild("BhopGravity") then
+                rootPart.BhopGravity.Force = Vector3.new(0, -gravity * rootPart:GetMass(), 0)
+            end
+        end
     end,
 })
 
@@ -782,107 +792,171 @@ local SpeedSlider = MainTab:CreateSlider({
 })
 
 local BhopToggle = MainTab:CreateToggle({
-    Name = "BHop (Press F to activate)",
+    Name = "BHop (Press F to toggle)",
     CurrentValue = false,
     Flag = "BhopToggle",
     Callback = function(Value)
         bhopEnabled = Value
         
         if not Value then
-            -- Clean up when toggle is turned off
-            for _, connection in pairs(connections) do
+            -- Clean up BHop connections
+            for _, connection in pairs(bhopConnections) do
                 connection:Disconnect()
             end
-            connections = {}
+            bhopConnections = {}
             
             -- Reset player state
-            local player = game.Players.LocalPlayer
-            local character = player.Character
-            if character then
-                local humanoid = character:FindFirstChild("Humanoid")
+            if game.Players.LocalPlayer.Character then
+                local humanoid = game.Players.LocalPlayer.Character:FindFirstChild("Humanoid")
                 if humanoid then
                     humanoid.PlatformStand = false
-                    local rootPart = humanoid.RootPart
-                    if rootPart then
-                        local bodyForce = rootPart:FindFirstChild("BhopGravity")
-                        if bodyForce then
-                            bodyForce:Destroy()
-                        end
+                    local rootPart = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or game.Players.LocalPlayer.Character:FindFirstChild("Torso")
+                    if rootPart and rootPart:FindFirstChild("BhopGravity") then
+                        rootPart.BhopGravity:Destroy()
                     end
                 end
             end
             return
         end
         
-        -- Initialize bhop system
-        local player = game.Players.LocalPlayer
-        local character = player.Character or player.CharacterAdded:Wait()
-        local humanoid = character:WaitForChild("Humanoid")
-        local rootPart = humanoid.RootPart
+        -- Initialize BHop system
+        local function setupBHop()
+            local character = game.Players.LocalPlayer.Character
+            if not character then return end
+            
+            local humanoid = character:FindFirstChild("Humanoid")
+            local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso")
+            if not humanoid or not rootPart then return end
+            
+            -- Create physics controller
+            local bodyForce = Instance.new("BodyForce")
+            bodyForce.Name = "BhopGravity"
+            bodyForce.Force = Vector3.new(0, -gravity * rootPart:GetMass(), 0)
+            bodyForce.Parent = rootPart
+            
+            -- Toggle with F key
+            table.insert(bhopConnections, game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
+                if not gameProcessed and input.KeyCode == Enum.KeyCode.F then
+                    bhopEnabled = not bhopEnabled
+                    humanoid.PlatformStand = bhopEnabled
+                    Rayfield:Notify({
+                        Title = "BHop",
+                        Content = bhopEnabled and "Enabled" or "Disabled",
+                        Duration = 1,
+                    })
+                end
+            end))
+            
+            -- Jump handler
+            table.insert(bhopConnections, game:GetService("UserInputService").JumpRequest:Connect(function()
+                if bhopEnabled and (tick() - lastJumpTime) > jumpCooldown and rootPart then
+                    rootPart.Velocity = Vector3.new(rootPart.Velocity.X, bhopPower, rootPart.Velocity.Z)
+                    lastJumpTime = tick()
+                end
+            end))
+            
+            -- Movement handler
+            table.insert(bhopConnections, game:GetService("RunService").Heartbeat:Connect(function()
+                if bhopEnabled and humanoid and rootPart then
+                    -- Update gravity force
+                    if rootPart:FindFirstChild("BhopGravity") then
+                        rootPart.BhopGravity.Force = Vector3.new(0, -gravity * rootPart:GetMass(), 0)
+                    end
+                    
+                    -- Movement controls
+                    local cam = workspace.CurrentCamera
+                    local forward = cam.CFrame.LookVector
+                    local right = cam.CFrame.RightVector
+                    
+                    forward = Vector3.new(forward.X, 0, forward.Z).Unit
+                    right = Vector3.new(right.X, 0, right.Z).Unit
+                    
+                    local direction = Vector3.new(0, 0, 0)
+                    
+                    if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.W) then
+                        direction = direction + forward
+                    end
+                    if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.S) then
+                        direction = direction - forward
+                    end
+                    if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.D) then
+                        direction = direction + right
+                    end
+                    if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.A) then
+                        direction = direction - right
+                    end
+                    
+                    if direction.Magnitude > 0 then
+                        direction = direction.Unit * movementSpeed
+                        rootPart.Velocity = Vector3.new(direction.X, rootPart.Velocity.Y, direction.Z)
+                    else
+                        rootPart.Velocity = Vector3.new(0, rootPart.Velocity.Y, 0)
+                    end
+                end
+            end))
+        end
         
-        -- Create physics controller
-        local bodyForce = Instance.new("BodyForce")
-        bodyForce.Name = "BhopGravity"
-        bodyForce.Force = Vector3.new(0, -gravity * rootPart:GetMass(), 0)
-        bodyForce.Parent = rootPart
-        
-        -- Toggle bhop when F key is pressed
-        table.insert(connections, game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
-            if not gameProcessed and input.KeyCode == Enum.KeyCode.F then
-                bhopEnabled = not bhopEnabled
-                humanoid.PlatformStand = bhopEnabled
+        -- Handle character loading
+        if game.Players.LocalPlayer.Character then
+            setupBHop()
+        end
+        table.insert(bhopConnections, game.Players.LocalPlayer.CharacterAdded:Connect(function()
+            if bhopEnabled then
+                setupBHop()
             end
         end))
-        
-        -- Jump handler (works both on ground and in air)
-        table.insert(connections, game:GetService("UserInputService").JumpRequest:Connect(function()
-            if bhopEnabled and (tick() - lastJumpTime) > jumpCooldown then
-                rootPart.Velocity = Vector3.new(rootPart.Velocity.X, bhopPower, rootPart.Velocity.Z)
-                lastJumpTime = tick()
+    end,
+})
+
+-- NoClip function
+local function noclipLoop()
+    if noclipEnabled and game.Players.LocalPlayer.Character then
+        for _, v in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.CanCollide = false
             end
-        end))
+        end
+    end
+end
+
+local NoclipToggle = MainTab:CreateToggle({
+    Name = "NoClip (Press N to toggle)",
+    CurrentValue = false,
+    Flag = "NoclipToggle",
+    Callback = function(Value)
+        noclipEnabled = Value
         
-        -- Movement handler
-        table.insert(connections, game:GetService("RunService").Heartbeat:Connect(function()
-            if bhopEnabled and humanoid and rootPart then
-                -- Apply custom gravity
-                bodyForce.Force = Vector3.new(0, -gravity * rootPart:GetMass(), 0)
-                
-                -- Movement controls
-                local cam = workspace.CurrentCamera
-                local forward = cam.CFrame.LookVector
-                local right = cam.CFrame.RightVector
-                
-                -- Horizontal movement only
-                forward = Vector3.new(forward.X, 0, forward.Z).Unit
-                right = Vector3.new(right.X, 0, right.Z).Unit
-                
-                local direction = Vector3.new(0, 0, 0)
-                
-                -- Check movement inputs
-                if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.W) then
-                    direction = direction + forward
+        if Value then
+            -- Enable NoClip
+            table.insert(noclipConnections, game:GetService("RunService").Stepped:Connect(noclipLoop))
+            
+            -- Toggle with N key
+            table.insert(noclipConnections, game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
+                if not gameProcessed and input.KeyCode == Enum.KeyCode.N then
+                    noclipEnabled = not noclipEnabled
+                    Rayfield:Notify({
+                        Title = "NoClip",
+                        Content = noclipEnabled and "Enabled" or "Disabled",
+                        Duration = 1,
+                    })
                 end
-                if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.S) then
-                    direction = direction - forward
-                end
-                if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.D) then
-                    direction = direction + right
-                end
-                if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.A) then
-                    direction = direction - right
-                end
-                
-                -- Apply movement (full control always)
-                if direction.Magnitude > 0 then
-                    direction = direction.Unit * movementSpeed
-                    rootPart.Velocity = Vector3.new(direction.X, rootPart.Velocity.Y, direction.Z)
-                else
-                    -- Only maintain vertical velocity if no movement keys pressed
-                    rootPart.Velocity = Vector3.new(0, rootPart.Velocity.Y, 0)
+            end))
+        else
+            -- Disable NoClip and clean up connections
+            for _, connection in pairs(noclipConnections) do
+                connection:Disconnect()
+            end
+            noclipConnections = {}
+            
+            -- Restore collision
+            if game.Players.LocalPlayer.Character then
+                for _, v in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
+                    if v:IsA("BasePart") then
+                        v.CanCollide = true
+                    end
                 end
             end
-        end))
+        end
     end,
 })
 
