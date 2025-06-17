@@ -989,7 +989,7 @@ MainTab:CreateToggle({
 
 MainTab:CreateSlider({
     Name = "FOV Size",
-    Range = {20, 200},
+    Range = {5, 200},
     Increment = 5,
     Suffix = "px",
     CurrentValue = silentAimSettings.FOVSize,
